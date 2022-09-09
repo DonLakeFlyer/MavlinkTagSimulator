@@ -51,6 +51,8 @@ uint32_t    simulatorIntraPulseUncertainty;
 uint32_t    simulatorIntraPulseJitter;
 float       simulatorMaxPulse;
 
+#define STRONGEST_PULSE_ANGLE 45
+
 
 static void usage(const std::string& bin_name)
 {
@@ -87,6 +89,8 @@ private:
         outgoingDebugFloatArray.array_id              = COMMAND_ID_ACK;
         outgoingDebugFloatArray.data[ACK_IDX_COMMAND] = commandId;
         outgoingDebugFloatArray.data[ACK_IDX_RESULT]  = result;
+
+        std::cerr << "_sendCommandAck" << commandId << " " << result << "\n";
 
         mavlink_msg_debug_float_array_encode(
             _mavlinkPassthrough.get_our_sysid(),
@@ -185,8 +189,7 @@ public:
         if (_sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown) {
             double heading = _vehicleEulerAngle.yaw_deg;
 
-            // Strongest pulse is at 90 degrees
-            heading -= 90;
+            heading -= STRONGEST_PULSE_ANGLE;
             if (heading < 0) {
                 heading += 360;
             }
