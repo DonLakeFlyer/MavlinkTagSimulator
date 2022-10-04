@@ -29,7 +29,7 @@ void PulseSimulator::_attitudeEulerCallback(Telemetry::EulerAngle eulerAngle)
 
 uint32_t PulseSimulator::simulatePulse(void)
 {
-    if (_sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown) {
+    if (readyRunning()) {
         double heading = _vehicleEulerAngle.yaw_deg;
 
         heading -= _strongestPulseAngle;
@@ -56,6 +56,7 @@ uint32_t PulseSimulator::simulatePulse(void)
         mavlink_message_t           message;
         mavlink_debug_float_array_t debugFloatArray;
 
+        memset(&debugFloatArray, 0, sizeof(debugFloatArray));
         debugFloatArray.array_id                    = COMMAND_ID_PULSE;
         debugFloatArray.data[PULSE_IDX_STRENGTH]    = pulse;
 
@@ -82,4 +83,29 @@ void PulseSimulator::stopPulses(void)
 {
     _sendPulses     = false;
     _tagInfo.tagId  = 0;
+}
+
+bool PulseSimulator::readyRunning(void)
+{
+    return _sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown && _tagInfo.tagId != 0;
+}
+
+void PulseSimulator::sendStatus(void)
+{
+    if (readyRunning()) {
+        std::cout << "Sending COMMAND_ID_DETECTION_STATUS\n";
+
+        mavlink_message_t           message;
+        mavlink_debug_float_array_t debugFloatArray;
+
+        debugFloatArray.array_id                            = COMMAND_ID_DETECTION_STATUS;
+        debugFloatArray.data[DETECTION_STATUS_IDX_STATUS]   = 0;
+
+        mavlink_msg_debug_float_array_encode(
+            _mavlinkPassthrough.get_our_sysid(),
+            _mavlinkPassthrough.get_our_compid(),
+            &message,
+            &debugFloatArray);
+        _mavlinkPassthrough.send_message(message);         
+    }
 }

@@ -7,6 +7,7 @@
 #define COMMAND_ID_START_DETECTION              3   // Start pulse detection
 #define COMMAND_ID_STOP_DETECTION               4   // Stop pulse detection
 #define COMMAND_ID_PULSE                        5   // Detected pulse value
+#define COMMAND_ID_DETECTION_STATUS				6	// Detection status: Sent once per second when running
 
 #define ACK_IDX_COMMAND                         0   // Command being acked
 #define ACK_IDX_RESULT                          1   // Command result - 1 success, 0 failure
@@ -28,3 +29,5 @@
 #define TAG_IDX_MAX_PULSE                       7   // Max pulse value
 
 #define START_DETECTION_IDX_TAG_ID              0   // Tag to start detection on
+
+#define DETECTION_STATUS_IDX_STATUS				0	// 0: Running correctly, 1-N: Error condition

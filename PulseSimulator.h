@@ -15,6 +15,8 @@ public:
     void 		startPulses		(TagInfo& tagInfo);
     void 		stopPulses		(void);
     uint32_t 	simulatePulse	(void);
+    bool        readyRunning    (void);
+    void        sendStatus      (void);
 
 private:
     void _positionCallback		(Telemetry::Position position);

@@ -61,6 +61,8 @@ void CommandHandler::_handleTagCommand(const mavlink_debug_float_array_t& debugF
     if (_tagInfo.tagId == 0) {
         std::cout << "handleTagCommand: invalid tag id of 0\n";
         commandResult  = 0;
+    } else {
+        _pulseSimulator.startPulses(_tagInfo);
     }
 
     _sendCommandAck(COMMAND_ID_TAG, commandResult);
