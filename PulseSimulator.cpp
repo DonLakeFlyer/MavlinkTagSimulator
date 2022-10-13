@@ -2,6 +2,7 @@
 #include "CommandDefs.h"
 
 #include <iostream>
+#include <chrono>
 
 PulseSimulator::PulseSimulator(System& system, MavlinkPassthrough& mavlinkPassthrough)
     : _system             (system)
@@ -57,6 +58,7 @@ uint32_t PulseSimulator::simulatePulse(void)
         mavlink_debug_float_array_t debugFloatArray;
 
         memset(&debugFloatArray, 0, sizeof(debugFloatArray));
+        debugFloatArray.time_usec                   = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
         debugFloatArray.array_id                    = COMMAND_ID_PULSE;
         debugFloatArray.data[PULSE_IDX_STRENGTH]    = pulse;
 
