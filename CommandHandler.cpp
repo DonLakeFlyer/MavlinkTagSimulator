@@ -8,7 +8,6 @@
 #include <thread>
 
 #include "CommandHandler.h"
-#include "CommandDefs.h"
 
 using namespace mavsdk;
 
@@ -22,18 +21,18 @@ CommandHandler::CommandHandler(System& system, MavlinkPassthrough& mavlinkPassth
     _mavlinkPassthrough.intercept_incoming_messages_async(std::bind(&CommandHandler::_handleDebugFloatArray, this, _1));
 }
 
-void CommandHandler::_sendCommandAck(uint32_t commandId, uint32_t result)
+void CommandHandler::_sendCommandAck(CommandID commandId, uint32_t result)
 {
     mavlink_message_t           message;
     mavlink_debug_float_array_t outgoingDebugFloatArray;
 
     memset(&outgoingDebugFloatArray, 0, sizeof(outgoingDebugFloatArray));
 
-    outgoingDebugFloatArray.array_id              = COMMAND_ID_ACK;
-    outgoingDebugFloatArray.data[ACK_IDX_COMMAND] = commandId;
-    outgoingDebugFloatArray.data[ACK_IDX_RESULT]  = result;
+    outgoingDebugFloatArray.array_id                                                = static_cast<float>(CommandID::CommandIDAck);
+    outgoingDebugFloatArray.data[static_cast<uint32_t>(AckIndex::AckIndexCommand)]  = static_cast<float>(commandId);
+    outgoingDebugFloatArray.data[static_cast<uint32_t>(AckIndex::AckIndexResult)]   = result;
 
-    std::cerr << "_sendCommandAck" << commandId << " " << result << "\n";
+    std::cerr << "_sendCommandAck" << static_cast<uint32_t>(commandId) << " " << result << std::endl;
 
     mavlink_msg_debug_float_array_encode(
         _mavlinkPassthrough.get_our_sysid(),
@@ -45,16 +44,16 @@ void CommandHandler::_sendCommandAck(uint32_t commandId, uint32_t result)
 
 void CommandHandler::_handleTagCommand(const mavlink_debug_float_array_t& debugFloatArray)
 {
-    _tagInfo.tagId                  = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_ID]);
-    _tagInfo.frequency              = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_FREQUENCY]);
-    _tagInfo.pulseDuration          = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_DURATION_MSECS]);
-    _tagInfo.intraPulse1            = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_INTRA_PULSE1_MSECS]);
-    _tagInfo.intraPulse2            = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_INTRA_PULSE2_MSECS]);
-    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_INTRA_PULSE_UNCERTAINTY]);
-    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[TAG_IDX_INTRA_PULSE_JITTER]);
-    _tagInfo.maxPulse               = debugFloatArray.data[TAG_IDX_MAX_PULSE];
+    _tagInfo.tagId                  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexID)]);
+    _tagInfo.frequency              = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexFrequency)]);
+    _tagInfo.pulseDuration          = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexDurationMSecs)]);
+    _tagInfo.intraPulse1            = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulse1MSecs)]);
+    _tagInfo.intraPulse2            = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulse2MSecs)]);
+    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulseUncertainty)]);
+    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulseJitter)]);
+    _tagInfo.maxPulse               = debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexMaxPulse)];
 
-    std::cout << "handleTagCommand: tagId:freq" << _tagInfo.tagId << " " << _tagInfo.frequency << "\n";
+    std::cout << "handleTagCommand: tagId:freq" << _tagInfo.tagId << " " << _tagInfo.frequency << std::endl;
 
     uint32_t commandResult = 1;
 
@@ -65,25 +64,21 @@ void CommandHandler::_handleTagCommand(const mavlink_debug_float_array_t& debugF
         _pulseSimulator.startPulses(_tagInfo);
     }
 
-    _sendCommandAck(COMMAND_ID_TAG, commandResult);
+    _sendCommandAck(CommandID::CommandIDTag, commandResult);
 }
 
 void CommandHandler::_handleStartDetection(const mavlink_debug_float_array_t& debugFloatArray)
 {
-    uint32_t requestedTagId = static_cast<uint32_t>(debugFloatArray.data[START_DETECTION_IDX_TAG_ID]);
-
     uint32_t commandResult = 1;
 
-    if (requestedTagId == _tagInfo.tagId) {
-        std::cout << "handleStartDetection: Detection started for freq " << _tagInfo.frequency << "\n"; 
+    if (_tagInfo.tagId) {
+        std::cout << "handleStartDetection: Detection started for freq " << _tagInfo.frequency << std::endl; 
     } else {
-        std::cout << "handleStartDetection: requested start tag id != known tag id - requested:known " << 
-            requestedTagId << " " <<
-            _tagInfo.tagId << "\n";
+        std::cout << "handleStartDetection: Detection started with no tag send" << std::endl;
         commandResult  = 0;
     }
 
-    _sendCommandAck(COMMAND_ID_START_DETECTION, commandResult);
+    _sendCommandAck(CommandID::CommandIDStart, commandResult);
 
     _pulseSimulator.startPulses(_tagInfo);
 }
@@ -91,7 +86,7 @@ void CommandHandler::_handleStartDetection(const mavlink_debug_float_array_t& de
 void CommandHandler::_handleStopDetection(void)
 {
     std::cout << "_handleStopDetection: Detection stopped\n"; 
-    _sendCommandAck(COMMAND_ID_STOP_DETECTION, 1);
+    _sendCommandAck(CommandID::CommandIDStop, 1);
 
     _pulseSimulator.stopPulses();
 }
@@ -102,14 +97,14 @@ bool CommandHandler::_handleDebugFloatArray(mavlink_message_t& message)
         mavlink_debug_float_array_t debugFloatArray;
 
         mavlink_msg_debug_float_array_decode(&message, &debugFloatArray);
-        switch (debugFloatArray.array_id) {
-        case COMMAND_ID_TAG:
+        switch (static_cast<CommandID>(debugFloatArray.array_id)) {
+        case CommandID::CommandIDTag:
             _handleTagCommand(debugFloatArray);
             break;
-        case COMMAND_ID_START_DETECTION:
+        case CommandID::CommandIDStart:
             _handleStartDetection(debugFloatArray);
             break;
-        case COMMAND_ID_STOP_DETECTION:
+        case CommandID::CommandIDStop:
             _handleStopDetection();
             break;
         }

@@ -1,5 +1,7 @@
 #include "PulseSimulator.h"
-#include "CommandDefs.h"
+
+#include "uavrt_interfaces/include/uavrt_interfaces/qgc_enum_class_definitions.hpp"
+using namespace uavrt_interfaces;
 
 #include <iostream>
 #include <chrono>
@@ -30,6 +32,8 @@ void PulseSimulator::_attitudeEulerCallback(Telemetry::EulerAngle eulerAngle)
 
 uint32_t PulseSimulator::simulatePulse(void)
 {
+    static bool confirmed = true;
+
     if (readyRunning()) {
         double heading = _vehicleEulerAngle.yaw_deg;
 
@@ -52,15 +56,19 @@ uint32_t PulseSimulator::simulatePulse(void)
         double altRatio = currentAltRel / maxAlt;
         pulse *= altRatio;
 
-        std::cout << "simulatePulse: " << heading << " " << pulseRatio << " " << pulse << "\n";
-
         mavlink_message_t           message;
         mavlink_debug_float_array_t debugFloatArray;
 
         memset(&debugFloatArray, 0, sizeof(debugFloatArray));
-        debugFloatArray.time_usec                   = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        debugFloatArray.array_id                    = COMMAND_ID_PULSE;
-        debugFloatArray.data[PULSE_IDX_STRENGTH]    = pulse;
+        debugFloatArray.time_usec                                                           = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        debugFloatArray.array_id                                                            = static_cast<uint16_t>(CommandID::CommandIDPulse);
+        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexStrengthLEGACY)]   = pulse;
+        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexSNR)]              = pulse;
+        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexConfirmedStatus)]  = confirmed;
+
+        std::cout << "simulatePulse: timeSecs:snr:confirmed" << debugFloatArray.time_usec / 1000 << pulse << confirmed << std::endl;
+
+        confirmed = !confirmed;
 
         mavlink_msg_debug_float_array_encode(
             _mavlinkPassthrough.get_our_sysid(),
@@ -90,24 +98,4 @@ void PulseSimulator::stopPulses(void)
 bool PulseSimulator::readyRunning(void)
 {
     return _sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown && _tagInfo.tagId != 0;
-}
-
-void PulseSimulator::sendStatus(void)
-{
-    if (readyRunning()) {
-        std::cout << "Sending COMMAND_ID_DETECTION_STATUS\n";
-
-        mavlink_message_t           message;
-        mavlink_debug_float_array_t debugFloatArray;
-
-        debugFloatArray.array_id                            = COMMAND_ID_DETECTION_STATUS;
-        debugFloatArray.data[DETECTION_STATUS_IDX_STATUS]   = 0;
-
-        mavlink_msg_debug_float_array_encode(
-            _mavlinkPassthrough.get_our_sysid(),
-            _mavlinkPassthrough.get_our_compid(),
-            &message,
-            &debugFloatArray);
-        _mavlinkPassthrough.send_message(message);         
-    }
 }

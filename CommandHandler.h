@@ -3,6 +3,9 @@
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
 
+#include "uavrt_interfaces/include/uavrt_interfaces/qgc_enum_class_definitions.hpp"
+using namespace uavrt_interfaces;
+
 #include "PulseSimulator.h"
 #include "TagInfo.h"
 
@@ -13,7 +16,7 @@ public:
     CommandHandler(System& system, MavlinkPassthrough& mavlinkPassthrough, PulseSimulator& PulseSimulator);
 
 private:
-    void _sendCommandAck        (uint32_t commandId, uint32_t result);
+    void _sendCommandAck        (CommandID commandId, uint32_t result);
     void _handleTagCommand      (const mavlink_debug_float_array_t& debugFloatArray);
     void _handleStartDetection  (const mavlink_debug_float_array_t& debugFloatArray);
     void _handleStopDetection   (void);
