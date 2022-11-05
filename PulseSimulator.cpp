@@ -66,7 +66,7 @@ uint32_t PulseSimulator::simulatePulse(void)
         debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexSNR)]              = pulse;
         debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexConfirmedStatus)]  = confirmed;
 
-        std::cout << "simulatePulse: timeSecs:snr:confirmed" << debugFloatArray.time_usec / 1000 << pulse << confirmed << std::endl;
+        std::cout << "simulatePulse: timeSecs:snr:confirmed " << debugFloatArray.time_usec / 1000 << pulse << confirmed << std::endl;
 
         confirmed = !confirmed;
 
