@@ -20,7 +20,8 @@ private:
     void _handleTagCommand      (const mavlink_debug_float_array_t& debugFloatArray);
     void _handleStartDetection  (const mavlink_debug_float_array_t& debugFloatArray);
     void _handleStopDetection   (void);
-    bool _handleDebugFloatArray (mavlink_message_t& message);
+    void _handleTunnel          (const mavlink_message_t& message);
+    void _sendTunnelAck         (mavlink_message_t& commandMessage, uint32_t command, uint32_t result);
 
 private:
     System&             _system;

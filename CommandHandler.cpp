@@ -8,6 +8,7 @@
 #include <thread>
 
 #include "CommandHandler.h"
+#include "CommandDefs.h"
 
 using namespace mavsdk;
 
@@ -18,7 +19,7 @@ CommandHandler::CommandHandler(System& system, MavlinkPassthrough& mavlinkPassth
 {
     using namespace std::placeholders;
 
-    _mavlinkPassthrough.intercept_incoming_messages_async(std::bind(&CommandHandler::_handleDebugFloatArray, this, _1));
+    _mavlinkPassthrough.subscribe_message_async(MAVLINK_MSG_ID_TUNNEL, std::bind(&CommandHandler::_handleTunnel, this, _1));
 }
 
 void CommandHandler::_sendCommandAck(CommandID commandId, uint32_t result)
@@ -39,6 +40,35 @@ void CommandHandler::_sendCommandAck(CommandID commandId, uint32_t result)
         _mavlinkPassthrough.get_our_compid(),
         &message,
         &outgoingDebugFloatArray);
+    _mavlinkPassthrough.send_message(message);        
+}
+
+void CommandHandler::_sendTunnelAck(mavlink_message_t& commandMessage, uint32_t command, uint32_t result)
+{
+    mavlink_message_t   message;
+    mavlink_tunnel_t    tunnel;
+    AckInfo_t           ackInfo;
+
+    memset(&tunnel, 0, sizeof(tunnel));
+
+    ackInfo.header.command  = COMMAND_ID_ACK;
+    ackInfo.command         = command;
+    ackInfo.result          = result;
+
+    tunnel.target_system    = _mavlinkPassthrough.get_target_sysid();
+    tunnel.target_component = _mavlinkPassthrough.get_target_compid();
+    tunnel.payload_type     = MAV_TUNNEL_PAYLOAD_TYPE_UNKNOWN;
+    tunnel.payload_length   = sizeof(ackInfo);
+
+    memcpy(tunnel.payload, &ackInfo, sizeof(ackInfo));
+
+    std::cerr << "_sendTunnelAck command:result " << command << " " << result << std::endl;
+
+    mavlink_msg_tunnel_encode(
+        _mavlinkPassthrough.get_our_sysid(),
+        _mavlinkPassthrough.get_our_compid(),
+        &message,
+        &tunnel);
     _mavlinkPassthrough.send_message(message);        
 }
 
@@ -91,7 +121,7 @@ void CommandHandler::_handleStopDetection(void)
     _pulseSimulator.stopPulses();
 }
 
-bool CommandHandler::_handleDebugFloatArray(mavlink_message_t& message)
+void CommandHandler::_handleTunnel(const mavlink_message_t& message)
 {
     if (message.msgid == MAVLINK_MSG_ID_DEBUG_FLOAT_ARRAY) {
         mavlink_debug_float_array_t debugFloatArray;
@@ -108,7 +138,21 @@ bool CommandHandler::_handleDebugFloatArray(mavlink_message_t& message)
             _handleStopDetection();
             break;
         }
-    }
+    } else if (message.msgid == MAVLINK_MSG_ID_TUNNEL) {
+            std::cout << "Got TUNNEL" << std::endl;
+        mavlink_message_t   outgoingMessage;
+        mavlink_tunnel_t    tunnel;
 
-    return true;
+        mavlink_msg_tunnel_decode(&message, &tunnel);
+
+        HeaderInfo_t header;
+        memcpy(&header, tunnel.payload, sizeof(header));
+
+        switch (header.command) {
+        case COMMAND_ID_START_DETECTION:
+            std::cout << "Tunnel start detection" << std::endl;
+            _sendTunnelAck(outgoingMessage, COMMAND_ID_START_DETECTION, 1);
+            break;
+        }
+    }
 }
