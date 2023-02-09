@@ -11,7 +11,6 @@
 #include <memory>
 #include <thread>
 
-
 using namespace mavsdk;
 
 static void usage(const std::string& bin_name)
@@ -41,59 +40,43 @@ int main(int argc, char* argv[])
     }
 
     Mavsdk mavsdk;
-
-    // We start with sysid 1 but adapt to the one of the autopilot once
-    // we have discoverd it.
-    uint8_t our_sysid = 1;
-    mavsdk.set_configuration(Mavsdk::Configuration{our_sysid, MAV_COMP_ID_ONBOARD_COMPUTER, false});
+    mavsdk.set_configuration(Mavsdk::Configuration(1, MAV_COMP_ID_ONBOARD_COMPUTER, true));
 
     const ConnectionResult connection_result = mavsdk.add_any_connection("udp://:14540");
-
     if (connection_result != ConnectionResult::Success) {
         std::cerr << "Connection failed: " << connection_result << '\n';
         return 1;
     }
 
-    std::cout << "Waiting to discover Autopilot and QGC systems...\n";
+    // We need to wait for both the Autopilot and QGC Systems to become availaable
 
-    // Wait 3 seconds for the Autopilot System to show up
-    auto autopilotPromise   = std::promise<std::shared_ptr<System>>{};
-    auto autopilotFuture    = autopilotPromise.get_future();
-    mavsdk.subscribe_on_new_system([&mavsdk, &autopilotPromise]() {
-        auto system = mavsdk.systems().back();
-        if (system->has_autopilot()) {
-            std::cout << "Discovered Autopilot" << std::endl;
-            autopilotPromise.set_value(system);
-            mavsdk.subscribe_on_new_system(nullptr);            
+    bool foundAutopilot = false;
+    bool foundQGC       = false;
+
+    std::shared_ptr<System> autopilotSystem;
+    std::shared_ptr<System> qgcSystem;
+
+    std::cout << "Waiting to discover Autopilot and QGC" << std::endl;
+    while (!foundAutopilot || !foundQGC) {
+        std::vector< std::shared_ptr< System > > systems = mavsdk.systems();
+        for (size_t i=0; i<systems.size(); i++) {
+            std::shared_ptr< System > system = systems[i];
+            std::vector< uint8_t > compIds = system->component_ids();
+            for (size_t i=0; i < compIds.size(); i++) {
+                auto compId = compIds[i];
+                if (!foundAutopilot && compId == MAV_COMP_ID_AUTOPILOT1) {
+                    std::cout << "Discovered Autopilot" << std::endl;
+                    autopilotSystem = system;
+                    foundAutopilot  = true;
+                } else if (!foundQGC && compId == MAV_COMP_ID_MISSIONPLANNER && system->get_system_id() == 255) {
+                    std::cout << "Discovered QGC" << std::endl;
+                    qgcSystem = system;
+                    foundQGC = true;
+                } 
+            }
         }
-    });
-    if (autopilotFuture.wait_for(std::chrono::seconds(10)) == std::future_status::timeout) {
-        std::cerr << "No autopilot found, exiting.\n";
-        return 1;
-    }
-
-    // Since we can't do anything without the QGC connection we wait for it indefinitely
-    auto qgcPromise = std::promise<std::shared_ptr<System>>{};
-    auto qgcFuture  = qgcPromise.get_future();
-    mavsdk.subscribe_on_new_system([&mavsdk, &qgcPromise]() {
-        auto system = mavsdk.systems().back();
-        std::vector< uint8_t > compIds = system->component_ids();
-        if (std::find(compIds.begin(), compIds.end(), MAV_COMP_ID_MISSIONPLANNER) != compIds.end()) {
-            std::cout << "Discovered QGC" << std::endl;
-            qgcPromise.set_value(system);
-            mavsdk.subscribe_on_new_system(nullptr);            
-        }
-    });
-    qgcFuture.wait();
-
-    // We have both systems ready for use now
-    auto autopilotSystem    = autopilotFuture.get();
-    auto qgcSystem          = qgcFuture.get();
-
-    // Update system ID if required.
-    if (autopilotSystem->get_system_id() != our_sysid) {
-        our_sysid = autopilotSystem->get_system_id();
-        mavsdk.set_configuration(Mavsdk::Configuration{our_sysid, MAV_COMP_ID_ONBOARD_COMPUTER, false});
+        
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
     auto udpPulseReceiver   = UDPPulseReceiver("127.0.0.1", 30001);
@@ -102,7 +85,6 @@ int main(int argc, char* argv[])
     auto commandHandler     = CommandHandler{*qgcSystem, mavlinkPassthrough, pulseSimulator};
 
     std::cout << "targets " << int(mavlinkPassthrough.get_target_sysid()) << " " << int(mavlinkPassthrough.get_target_compid()) << std::endl;
-
 
     if (udpPulse) {
         udpPulseReceiver.start();

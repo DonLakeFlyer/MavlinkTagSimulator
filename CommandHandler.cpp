@@ -8,7 +8,6 @@
 #include <thread>
 
 #include "CommandHandler.h"
-#include "CommandDefs.h"
 
 using namespace mavsdk;
 
@@ -19,31 +18,10 @@ CommandHandler::CommandHandler(System& system, MavlinkPassthrough& mavlinkPassth
 {
     using namespace std::placeholders;
 
-    _mavlinkPassthrough.subscribe_message_async(MAVLINK_MSG_ID_TUNNEL, std::bind(&CommandHandler::_handleTunnel, this, _1));
+    _mavlinkPassthrough.subscribe_message_async(MAVLINK_MSG_ID_TUNNEL, std::bind(&CommandHandler::_handleTunnelMessage, this, _1));
 }
 
-void CommandHandler::_sendCommandAck(CommandID commandId, uint32_t result)
-{
-    mavlink_message_t           message;
-    mavlink_debug_float_array_t outgoingDebugFloatArray;
-
-    memset(&outgoingDebugFloatArray, 0, sizeof(outgoingDebugFloatArray));
-
-    outgoingDebugFloatArray.array_id                                                = static_cast<float>(CommandID::CommandIDAck);
-    outgoingDebugFloatArray.data[static_cast<uint32_t>(AckIndex::AckIndexCommand)]  = static_cast<float>(commandId);
-    outgoingDebugFloatArray.data[static_cast<uint32_t>(AckIndex::AckIndexResult)]   = result;
-
-    std::cerr << "_sendCommandAck" << static_cast<uint32_t>(commandId) << " " << result << std::endl;
-
-    mavlink_msg_debug_float_array_encode(
-        _mavlinkPassthrough.get_our_sysid(),
-        _mavlinkPassthrough.get_our_compid(),
-        &message,
-        &outgoingDebugFloatArray);
-    _mavlinkPassthrough.send_message(message);        
-}
-
-void CommandHandler::_sendTunnelAck(mavlink_message_t& commandMessage, uint32_t command, uint32_t result)
+void CommandHandler::_sendTunnelAck(uint32_t command, uint32_t result)
 {
     mavlink_message_t   message;
     mavlink_tunnel_t    tunnel;
@@ -72,87 +50,117 @@ void CommandHandler::_sendTunnelAck(mavlink_message_t& commandMessage, uint32_t 
     _mavlinkPassthrough.send_message(message);        
 }
 
-void CommandHandler::_handleTagCommand(const mavlink_debug_float_array_t& debugFloatArray)
+bool CommandHandler::_handleStartTags(void)
 {
-    _tagInfo.tagId                  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexID)]);
-    _tagInfo.frequency              = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexFrequency)]);
-    _tagInfo.pulseDuration          = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexDurationMSecs)]);
-    _tagInfo.intraPulse1            = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulse1MSecs)]);
-    _tagInfo.intraPulse2            = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulse2MSecs)]);
-    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulseUncertainty)]);
-    _tagInfo.intraPulseUncertainty  = static_cast<uint32_t>(debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexIntraPulseJitter)]);
-    _tagInfo.maxPulse               = debugFloatArray.data[static_cast<uint32_t>(TagIndex::TagIndexMaxPulse)];
+    std::cout << "COMMAND_ID_START_TAGS"<< std::endl;
 
-    std::cout << "handleTagCommand: tagId:freq" << _tagInfo.tagId << " " << _tagInfo.frequency << std::endl;
-
-    uint32_t commandResult = 1;
-
-    if (_tagInfo.tagId == 0) {
-        std::cout << "handleTagCommand: invalid tag id of 0\n";
-        commandResult  = 0;
+    if (_detectionRunning) {
+        std::cout << "CommandHandler::_handleStartTags Error: Detection is current running" << std::endl;
+        return false;
+    } else if (_receivingTags) {
+        std::cout << "CommandHandler::_handleStartTags Error: Duplicate start received" << std::endl;
+        return false;
     } else {
-        _pulseSimulator.startPulses(_tagInfo);
+        // We are in the correct state to start receiving tags
+        _receivingTags  = true;
+        _haveTags       = false;
+        return true;
     }
-
-    _sendCommandAck(CommandID::CommandIDTag, commandResult);
 }
 
-void CommandHandler::_handleStartDetection(const mavlink_debug_float_array_t& debugFloatArray)
+bool CommandHandler::_handleEndTags(void)
 {
+    std::cout << "COMMAND_ID_END_TAGS"<< std::endl;
+
+    if (!_receivingTags) {
+        std::cout << "CommandHandler::_handleEndTags Error: No start tags received" << std::endl;
+        return false;
+    } else {
+        // We are in the correct state to end receiving tags
+        _receivingTags = false;
+        return true;
+    }
+}
+
+bool CommandHandler::_handleTagInfo(const mavlink_tunnel_t& tunnel)
+{
+    memcpy(&_tagInfo, tunnel.payload, sizeof(_tagInfo));
+
+    std::cout << "COMMAND_ID_TAG:"                      << std::endl;
+    std::cout << "\tid: "                               << _tagInfo.id << std::endl;
+    std::cout << "\tfrequency_hz: "                     << _tagInfo.frequency_hz << std::endl;
+    std::cout << "\tpulse_width_msecs: "                << _tagInfo.pulse_width_msecs << std::endl;
+    std::cout << "\tintra_pulse1_msecs: "               << _tagInfo.intra_pulse1_msecs << std::endl;
+    std::cout << "\tintra_pulse_uncertainty_msecs: "    << _tagInfo.intra_pulse_uncertainty_msecs << std::endl;
+    std::cout << "\tintra_pulse_jitter_msecs: "         << _tagInfo.intra_pulse_jitter_msecs << std::endl;
+    std::cout << "\tk: "                                << _tagInfo.k << std::endl;
+    std::cout << "\tfalse_alarm_probability: "           << _tagInfo.false_alarm_probability << std::endl;
+    std::cout << std::endl;
+
+    _haveTags = true;
+
+    return true;
+}
+
+bool CommandHandler::_handleStartDetection(void)
+{
+    std::cout << "COMMAND_ID_START_DETECTION" << std::endl;
+
     uint32_t commandResult = 1;
 
-    if (_tagInfo.tagId) {
-        std::cout << "handleStartDetection: Detection started for freq " << _tagInfo.frequency << std::endl; 
+    if (_tagInfo.id) {
+        std::cout << "handleStartDetection: Detection started for freq " << _tagInfo.frequency_hz << std::endl; 
     } else {
         std::cout << "handleStartDetection: Detection started with no tag send" << std::endl;
         commandResult  = 0;
     }
 
-    _sendCommandAck(CommandID::CommandIDStart, commandResult);
-
     _pulseSimulator.startPulses(_tagInfo);
+
+    return true;
 }
 
-void CommandHandler::_handleStopDetection(void)
+bool CommandHandler::_handleStopDetection(void)
 {
+    std::cout << "COMMAND_ID_STOP_DETECTION" << std::endl;
+
     std::cout << "_handleStopDetection: Detection stopped\n"; 
-    _sendCommandAck(CommandID::CommandIDStop, 1);
 
     _pulseSimulator.stopPulses();
+
+    return true;
 }
 
-void CommandHandler::_handleTunnel(const mavlink_message_t& message)
+void CommandHandler::_handleTunnelMessage(const mavlink_message_t& message)
 {
-    if (message.msgid == MAVLINK_MSG_ID_DEBUG_FLOAT_ARRAY) {
-        mavlink_debug_float_array_t debugFloatArray;
+    std::cout << "Got TUNNEL mavlink message" << std::endl;
+    
+    mavlink_message_t   outgoingMessage;
+    mavlink_tunnel_t    tunnel;
+    bool                success = false;
 
-        mavlink_msg_debug_float_array_decode(&message, &debugFloatArray);
-        switch (static_cast<CommandID>(debugFloatArray.array_id)) {
-        case CommandID::CommandIDTag:
-            _handleTagCommand(debugFloatArray);
-            break;
-        case CommandID::CommandIDStart:
-            _handleStartDetection(debugFloatArray);
-            break;
-        case CommandID::CommandIDStop:
-            _handleStopDetection();
-            break;
-        }
-    } else if (message.msgid == MAVLINK_MSG_ID_TUNNEL) {
-            std::cout << "Got TUNNEL" << std::endl;
-        mavlink_message_t   outgoingMessage;
-        mavlink_tunnel_t    tunnel;
+    mavlink_msg_tunnel_decode(&message, &tunnel);
 
-        mavlink_msg_tunnel_decode(&message, &tunnel);
+    HeaderInfo_t header;
+    memcpy(&header, tunnel.payload, sizeof(header));
 
-        HeaderInfo_t header;
-        memcpy(&header, tunnel.payload, sizeof(header));
-
-        switch (header.command) {
-        case COMMAND_ID_START_DETECTION:
-            std::cout << "Tunnel start detection" << std::endl;
-            _sendTunnelAck(outgoingMessage, COMMAND_ID_START_DETECTION, 1);
-            break;
-        }
+    switch (header.command) {
+    case COMMAND_ID_START_TAGS:
+        success = _handleStartTags();
+        break;
+    case COMMAND_ID_TAG:
+        success = _handleTagInfo(tunnel);
+        break;
+    case COMMAND_ID_END_TAGS:
+        success = _handleEndTags();
+        break;
+    case COMMAND_ID_START_DETECTION:
+        success = _handleStartDetection();
+        break;
+    case COMMAND_ID_STOP_DETECTION:
+        success = _handleStopDetection();
+        break;
     }
+
+    _sendTunnelAck(header.command, success ? COMMAND_RESULT_SUCCESS : COMMAND_RESULT_FAILURE);
 }

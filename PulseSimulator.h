@@ -1,18 +1,19 @@
 #pragma once
 
-#include "TagInfo.h"
-
 #include <mavsdk/mavsdk.h>
 #include <mavsdk/plugins/mavlink_passthrough/mavlink_passthrough.h>
 #include <mavsdk/plugins/telemetry/telemetry.h>
 
+#include "TunnelProtocol.h"
+
 using namespace mavsdk;
+using namespace TunnelProtocol;
 
 class PulseSimulator {
 public:
     PulseSimulator(System& system, MavlinkPassthrough& mavlinkPassthrough);
 
-    void 		startPulses		(TagInfo& tagInfo);
+    void 		startPulses		(TagInfo_t& tagInfo);
     void 		stopPulses		(void);
     uint32_t 	simulatePulse	(void);
     bool        readyRunning    (void);
@@ -25,7 +26,7 @@ private:
     MavlinkPassthrough&     _mavlinkPassthrough;
     Telemetry               _telemetry;
     bool                    _sendPulses             { false };
-    TagInfo					_tagInfo;
+    TagInfo_t				_tagInfo;
     bool                    _vehiclePositionKnown   { false };
     bool                    _vehicleEulerAngleKnown	{ false };
     Telemetry::Position     _vehiclePosition;
