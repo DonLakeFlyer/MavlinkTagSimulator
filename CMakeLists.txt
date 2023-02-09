@@ -11,12 +11,18 @@ add_executable(TagSimulator
     CommandHandler.cpp
     PulseSimulator.cpp
     UDPPulseReceiver.cpp
+    uavrt_interfaces/include/uavrt_interfaces/TunnelProtocol.h
 )
 
 find_package(MAVSDK REQUIRED)
 
 target_link_libraries(TagSimulator
     MAVSDK::mavsdk
+)
+
+target_include_directories(TagSimulator
+    PRIVATE
+    uavrt_interfaces/include/uavrt_interfaces
 )
 
 if(NOT MSVC)

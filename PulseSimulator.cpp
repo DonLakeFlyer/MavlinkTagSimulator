@@ -1,8 +1,5 @@
 #include "PulseSimulator.h"
 
-#include "uavrt_interfaces/include/uavrt_interfaces/qgc_enum_class_definitions.hpp"
-using namespace uavrt_interfaces;
-
 #include <iostream>
 #include <chrono>
 
@@ -56,34 +53,45 @@ uint32_t PulseSimulator::simulatePulse(void)
         double altRatio = currentAltRel / maxAlt;
         pulse *= altRatio;
 
-        mavlink_message_t           message;
-        mavlink_debug_float_array_t debugFloatArray;
+        mavlink_message_t   message;
+        mavlink_tunnel_t    tunnel;
+        PulseInfo_t         pulseInfo;
 
-        memset(&debugFloatArray, 0, sizeof(debugFloatArray));
-        debugFloatArray.time_usec                                                           = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-        debugFloatArray.array_id                                                            = static_cast<uint16_t>(CommandID::CommandIDPulse);
-        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexStrengthLEGACY)]   = pulse;
-        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexSNR)]              = pulse;
-        debugFloatArray.data[static_cast<uint32_t>(PulseIndex::PulseIndexConfirmedStatus)]  = confirmed;
+        memset(&tunnel,     0, sizeof(tunnel));
+        memset(&pulseInfo,  0, sizeof(pulseInfo));
 
-        std::cout << "simulatePulse: timeSecs:snr:confirmed " << debugFloatArray.time_usec / 1000 << pulse << confirmed << std::endl;
+        pulseInfo.header.command        = COMMAND_ID_PULSE;
+        pulseInfo.tag_id                = _tagInfo.id;
+        pulseInfo.frequency_hz          = _tagInfo.frequency_hz;
+        pulseInfo.start_time_seconds    = std::chrono::duration_cast<std::chrono::seconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+        pulseInfo.snr                   = pulse;
+        pulseInfo.confirmed_status      = confirmed;
+
+        memcpy(tunnel.payload, &pulseInfo, sizeof(pulseInfo));
+
+        tunnel.target_system    = _mavlinkPassthrough.get_target_sysid();
+        tunnel.target_component = _mavlinkPassthrough.get_target_compid();
+        tunnel.payload_type     = MAV_TUNNEL_PAYLOAD_TYPE_UNKNOWN;
+        tunnel.payload_length   = sizeof(pulseInfo);
+
+        std::cout << "simulatePulse: timeSecs:snr:confirmed " << pulseInfo.start_time_seconds << pulse << confirmed << std::endl;
 
         confirmed = !confirmed;
 
-        mavlink_msg_debug_float_array_encode(
+        mavlink_msg_tunnel_encode(
             _mavlinkPassthrough.get_our_sysid(),
             _mavlinkPassthrough.get_our_compid(),
             &message,
-            &debugFloatArray);
+            &tunnel);
         _mavlinkPassthrough.send_message(message);        
 
-        return _tagInfo.intraPulse1;
+        return _tagInfo.intra_pulse1_msecs;
     } else {
         return 1000;
     }
 }
 
-void PulseSimulator::startPulses(TagInfo& tagInfo)
+void PulseSimulator::startPulses(TagInfo_t& tagInfo)
 {
     _sendPulses = true;
     _tagInfo    = tagInfo;
@@ -91,11 +99,11 @@ void PulseSimulator::startPulses(TagInfo& tagInfo)
 
 void PulseSimulator::stopPulses(void)
 {
-    _sendPulses     = false;
-    _tagInfo.tagId  = 0;
+    _sendPulses = false;
+    _tagInfo.id = 0;
 }
 
 bool PulseSimulator::readyRunning(void)
 {
-    return _sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown && _tagInfo.tagId != 0;
+    return _sendPulses && _vehiclePositionKnown && _vehicleEulerAngleKnown && _tagInfo.id != 0;
 }
