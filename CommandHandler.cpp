@@ -94,7 +94,7 @@ bool CommandHandler::_handleTagInfo(const mavlink_tunnel_t& tunnel)
     std::cout << "\tintra_pulse_uncertainty_msecs: "    << _tagInfo.intra_pulse_uncertainty_msecs << std::endl;
     std::cout << "\tintra_pulse_jitter_msecs: "         << _tagInfo.intra_pulse_jitter_msecs << std::endl;
     std::cout << "\tk: "                                << _tagInfo.k << std::endl;
-    std::cout << "\false_alarm_probability: "           << _tagInfo.false_alarm_probability << std::endl;
+    std::cout << "\tfalse_alarm_probability: "           << _tagInfo.false_alarm_probability << std::endl;
     std::cout << std::endl;
 
     _haveTags = true;
